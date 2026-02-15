@@ -11,12 +11,11 @@
             background-color: #f0f8ff;
             color: #333;
             margin: 0;
-            padding: 0;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             text-align: center;
         }
         h1 {
@@ -33,43 +32,51 @@
             height: 300px;
             border: 2px solid #87cefa;
             margin: 20px 0;
+            border-radius: 10px;
         }
         button {
             width: 90%;
-            padding: 20px;
-            font-size: 2em;
-            margin: 10px 0;
+            max-width: 500px;
+            padding: 25px;
+            font-size: 2.2em;
+            margin: 15px 0;
             border: none;
-            border-radius: 10px;
+            border-radius: 15px;
             cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         #start-btn {
             background-color: #90ee90;
             color: white;
         }
         #payment-btn {
-            background-color: #ffd700;
+            background-color: #ff6347; /* 目立つ赤橙色でお支払い感を強調 */
             color: white;
+            font-weight: bold;
         }
         #reset-btn {
             background-color: #add8e6;
             color: white;
         }
         #payment-display {
-            font-size: 4em;
-            margin: 20px 0;
+            font-size: 5em;
+            font-weight: bold;
+            color: #ff4500;
+            margin: 30px 0;
             display: none;
         }
         #product-name {
-            font-size: 1.5em;
+            font-size: 1.8em;
             margin: 10px 0;
+            color: #555;
         }
         #message {
-            font-size: 1.8em;
-            color: #ff4500;
-            margin: 10px 0;
-            min-height: 1.2em;
+            font-size: 2em;
+            color: #32cd32;
+            margin: 15px 0;
+            min-height: 1.5em;
         }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -78,9 +85,10 @@
     <div id="product-name">商品名: 100円ショップの商品</div>
     <div id="scanner"></div>
     <div id="message"></div>
+
     <button id="start-btn">レジをはじめる</button>
-    <button id="payment-btn" style="display: none;">お支払い</button>
-    <button id="reset-btn" style="display: none;">つぎの人（リセット）</button>
+    <button id="payment-btn" class="hidden">お支払いする</button>
+    <button id="reset-btn" class="hidden">つぎの人（リセット）</button>
     <div id="payment-display"></div>
 
     <script>
@@ -94,36 +102,31 @@
         speech.lang = 'ja-JP';
         speech.text = 'ひゃくじゅうえん';
 
-        const COOLDOWN_MS = 2000; // 2秒待機（調整可能）
+        const COOLDOWN_MS = 2000;
 
         function updateDisplay() {
             document.getElementById('total-amount').textContent = `合計: ${total}円`;
             document.getElementById('item-count').textContent = `個数: ${count}`;
         }
 
-        function showMessage(text, duration = 1200) {
+        function showMessage(text, duration = 1500) {
             const msgEl = document.getElementById('message');
             msgEl.textContent = text;
-            setTimeout(() => {
-                msgEl.textContent = '';
-            }, duration);
+            setTimeout(() => { msgEl.textContent = ''; }, duration);
         }
 
         function playBeep() {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            const oscillator = audioContext.createOscillator();
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
-            oscillator.connect(audioContext.destination);
-            oscillator.start();
-            setTimeout(() => oscillator.stop(), 100);
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1000, audioContext.currentTime);
+            osc.connect(audioContext.destination);
+            osc.start();
+            setTimeout(() => osc.stop(), 100);
         }
 
         async function startScanner() {
             if (html5QrCode) return;
-
             html5QrCode = new Html5Qrcode("scanner");
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
@@ -132,56 +135,52 @@
                     { facingMode: "environment" },
                     config,
                     (decodedText, decodedResult) => {
-                        if (isCooldown) return; // クールダウン中は無視
-
+                        if (isCooldown) return;
                         isCooldown = true;
+
                         total += 110;
                         count++;
                         updateDisplay();
                         playBeep();
-                        showMessage("＋110円");
-                        setTimeout(() => {
-                            window.speechSynthesis.speak(speech);
-                        }, 200);
+                        showMessage("＋110円 ピッ！");
+                        setTimeout(() => window.speechSynthesis.speak(speech), 150);
 
-                        // クールダウン処理
-                        setTimeout(() => {
-                            isCooldown = false;
-                        }, COOLDOWN_MS);
+                        setTimeout(() => { isCooldown = false; }, COOLDOWN_MS);
                     },
-                    (errorMessage) => {
-                        // スキャンエラーは無視
-                    }
+                    () => {}
                 );
                 isScanning = true;
+                document.getElementById('start-btn').classList.add('hidden');
+                document.getElementById('payment-btn').classList.remove('hidden');
             } catch (err) {
-                console.error("カメラ起動エラー:", err);
-                showMessage("カメラが使えません");
+                console.error(err);
+                showMessage("カメラが起動できませんでした");
             }
         }
 
-        function stopScanner() {
+        async function stopScanner() {
             if (html5QrCode && isScanning) {
-                html5QrCode.stop().then(() => {
+                try {
+                    await html5QrCode.stop();
                     isScanning = false;
                     html5QrCode = null;
-                }).catch(err => console.error("停止エラー:", err));
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
         document.getElementById('start-btn').addEventListener('click', () => {
-            document.getElementById('start-btn').style.display = 'none';
-            document.getElementById('payment-btn').style.display = 'block';
-            playBeep(); // 音声許可きっかけ
+            playBeep(); // 音声・カメラ許可のきっかけ
             startScanner();
         });
 
         document.getElementById('payment-btn').addEventListener('click', async () => {
             await stopScanner();
-            document.getElementById('scanner').style.display = 'none';
-            document.getElementById('payment-btn').style.display = 'none';
-            document.getElementById('reset-btn').style.display = 'block';
-            document.getElementById('payment-display').textContent = `合計 ${total}円`;
+            document.getElementById('scanner').classList.add('hidden');
+            document.getElementById('payment-btn').classList.add('hidden');
+            document.getElementById('reset-btn').classList.remove('hidden');
+            document.getElementById('payment-display').textContent = `合計 ${total}円 お支払いください`;
             document.getElementById('payment-display').style.display = 'block';
             document.getElementById('message').textContent = '';
         });
@@ -190,10 +189,11 @@
             total = 0;
             count = 0;
             updateDisplay();
-            document.getElementById('scanner').style.display = 'block';
+            document.getElementById('scanner').classList.remove('hidden');
             document.getElementById('payment-display').style.display = 'none';
-            document.getElementById('reset-btn').style.display = 'none';
-            document.getElementById('payment-btn').style.display = 'block';
+            document.getElementById('reset-btn').classList.add('hidden');
+            document.getElementById('payment-btn').classList.remove('hidden');
+            document.getElementById('message').textContent = '';
             startScanner();
         });
     </script>
