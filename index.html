@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>100均レジWebアプリ</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f8ff; /* 明るい青系 */
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+        }
+        h1 {
+            font-size: 4em; /* 極大サイズ */
+            margin: 10px 0;
+        }
+        #total-amount, #item-count {
+            font-size: 3em; /* 大きい文字 */
+            margin: 5px 0;
+        }
+        #scanner {
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            border: 2px solid #87cefa; /* 明るい青 */
+            margin: 20px 0;
+        }
+        button {
+            width: 90%;
+            padding: 20px;
+            font-size: 2em; /* 大きい文字 */
+            margin: 10px 0;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        #start-btn {
+            background-color: #90ee90; /* 明るい緑 */
+            color: white;
+        }
+        #payment-btn {
+            background-color: #ffd700; /* 明るい黄色 */
+            color: white;
+        }
+        #reset-btn {
+            background-color: #add8e6; /* 明るい青 */
+            color: white;
+        }
+        #payment-display {
+            font-size: 4em;
+            margin: 20px 0;
+            display: none;
+        }
+        #product-name {
+            font-size: 1.5em;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="total-amount">合計: 0円</h1>
+    <h1 id="item-count">個数: 0</h1>
+    <div id="product-name">商品名: 100円ショップの商品</div>
+    <div id="scanner"></div>
+    <button id="start-btn">レジをはじめる</button>
+    <button id="payment-btn" style="display: none;">お支払い</button>
+    <button id="reset-btn" style="display: none;">つぎの人（リセット）</button>
+    <div id="payment-display"></div>
+
+    <script>
+        let total = 0;
+        let count = 0;
+        let html5QrCode;
+        let audioContext;
+        let speech = new SpeechSynthesisUtterance();
+        speech.lang = 'ja-JP';
+        speech.text = 'ひゃくじゅうえん';
+
+        function updateDisplay() {
+            document.getElementById('total-amount').textContent = `合計: ${total}円`;
+            document.getElementById('item-count').textContent = `個数: ${count}`;
+        }
+
+        function playBeep() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(1000, audioContext.currentTime); // ピッという音
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+            setTimeout(() => {
+                oscillator.stop();
+            }, 100);
+        }
+
+        function startScanner() {
+            html5QrCode = new Html5Qrcode("scanner");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText, decodedResult) => {
+                    total += 110;
+                    count++;
+                    updateDisplay();
+                    playBeep();
+                    setTimeout(() => {
+                        window.speechSynthesis.speak(speech);
+                    }, 200);
+                },
+                (errorMessage) => {
+                    // スキャン中のエラーは無視
+                }
+            ).catch((err) => {
+                console.error("カメラ起動エラー:", err);
+            });
+        }
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('payment-btn').style.display = 'block';
+            startScanner();
+            // 音声許可のためのダミー音
+            playBeep();
+        });
+
+        document.getElementById('payment-btn').addEventListener('click', () => {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scanner').style.display = 'none';
+                    document.getElementById('payment-btn').style.display = 'none';
+                    document.getElementById('reset-btn').style.display = 'block';
+                    document.getElementById('payment-display').textContent = `合計 ${total}円`;
+                    document.getElementById('payment-display').style.display = 'block';
+                }).catch((err) => {
+                    console.error("スキャン停止エラー:", err);
+                });
+            }
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            total = 0;
+            count = 0;
+            updateDisplay();
+            document.getElementById('scanner').style.display = 'block';
+            document.getElementById('payment-display').style.display = 'none';
+            document.getElementById('reset-btn').style.display = 'none';
+            document.getElementById('payment-btn').style.display = 'block';
+            startScanner();
+        });
+    </script>
+</body>
+</html>
