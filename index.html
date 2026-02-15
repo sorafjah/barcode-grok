@@ -8,7 +8,7 @@
     <style>
         body {
             font-family: sans-serif;
-            background-color: #f0f8ff; /* 明るい青系 */
+            background-color: #f0f8ff;
             color: #333;
             margin: 0;
             padding: 0;
@@ -20,39 +20,39 @@
             text-align: center;
         }
         h1 {
-            font-size: 4em; /* 極大サイズ */
+            font-size: 4em;
             margin: 10px 0;
         }
         #total-amount, #item-count {
-            font-size: 3em; /* 大きい文字 */
+            font-size: 3em;
             margin: 5px 0;
         }
         #scanner {
             width: 100%;
             max-width: 400px;
             height: 300px;
-            border: 2px solid #87cefa; /* 明るい青 */
+            border: 2px solid #87cefa;
             margin: 20px 0;
         }
         button {
             width: 90%;
             padding: 20px;
-            font-size: 2em; /* 大きい文字 */
+            font-size: 2em;
             margin: 10px 0;
             border: none;
             border-radius: 10px;
             cursor: pointer;
         }
         #start-btn {
-            background-color: #90ee90; /* 明るい緑 */
+            background-color: #90ee90;
             color: white;
         }
         #payment-btn {
-            background-color: #ffd700; /* 明るい黄色 */
+            background-color: #ffd700;
             color: white;
         }
         #reset-btn {
-            background-color: #add8e6; /* 明るい青 */
+            background-color: #add8e6;
             color: white;
         }
         #payment-display {
@@ -64,6 +64,12 @@
             font-size: 1.5em;
             margin: 10px 0;
         }
+        #message {
+            font-size: 1.8em;
+            color: #ff4500;
+            margin: 10px 0;
+            min-height: 1.2em;
+        }
     </style>
 </head>
 <body>
@@ -71,6 +77,7 @@
     <h1 id="item-count">個数: 0</h1>
     <div id="product-name">商品名: 100円ショップの商品</div>
     <div id="scanner"></div>
+    <div id="message"></div>
     <button id="start-btn">レジをはじめる</button>
     <button id="payment-btn" style="display: none;">お支払い</button>
     <button id="reset-btn" style="display: none;">つぎの人（リセット）</button>
@@ -79,15 +86,27 @@
     <script>
         let total = 0;
         let count = 0;
-        let html5QrCode;
+        let html5QrCode = null;
+        let isScanning = false;
+        let isCooldown = false;
         let audioContext;
         let speech = new SpeechSynthesisUtterance();
         speech.lang = 'ja-JP';
         speech.text = 'ひゃくじゅうえん';
 
+        const COOLDOWN_MS = 2000; // 2秒待機（調整可能）
+
         function updateDisplay() {
             document.getElementById('total-amount').textContent = `合計: ${total}円`;
             document.getElementById('item-count').textContent = `個数: ${count}`;
+        }
+
+        function showMessage(text, duration = 1200) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            setTimeout(() => {
+                msgEl.textContent = '';
+            }, duration);
         }
 
         function playBeep() {
@@ -96,58 +115,75 @@
             }
             const oscillator = audioContext.createOscillator();
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(1000, audioContext.currentTime); // ピッという音
+            oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
             oscillator.connect(audioContext.destination);
             oscillator.start();
-            setTimeout(() => {
-                oscillator.stop();
-            }, 100);
+            setTimeout(() => oscillator.stop(), 100);
         }
 
-        function startScanner() {
+        async function startScanner() {
+            if (html5QrCode) return;
+
             html5QrCode = new Html5Qrcode("scanner");
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText, decodedResult) => {
-                    total += 110;
-                    count++;
-                    updateDisplay();
-                    playBeep();
-                    setTimeout(() => {
-                        window.speechSynthesis.speak(speech);
-                    }, 200);
-                },
-                (errorMessage) => {
-                    // スキャン中のエラーは無視
-                }
-            ).catch((err) => {
+            try {
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (decodedText, decodedResult) => {
+                        if (isCooldown) return; // クールダウン中は無視
+
+                        isCooldown = true;
+                        total += 110;
+                        count++;
+                        updateDisplay();
+                        playBeep();
+                        showMessage("＋110円");
+                        setTimeout(() => {
+                            window.speechSynthesis.speak(speech);
+                        }, 200);
+
+                        // クールダウン処理
+                        setTimeout(() => {
+                            isCooldown = false;
+                        }, COOLDOWN_MS);
+                    },
+                    (errorMessage) => {
+                        // スキャンエラーは無視
+                    }
+                );
+                isScanning = true;
+            } catch (err) {
                 console.error("カメラ起動エラー:", err);
-            });
+                showMessage("カメラが使えません");
+            }
+        }
+
+        function stopScanner() {
+            if (html5QrCode && isScanning) {
+                html5QrCode.stop().then(() => {
+                    isScanning = false;
+                    html5QrCode = null;
+                }).catch(err => console.error("停止エラー:", err));
+            }
         }
 
         document.getElementById('start-btn').addEventListener('click', () => {
             document.getElementById('start-btn').style.display = 'none';
             document.getElementById('payment-btn').style.display = 'block';
+            playBeep(); // 音声許可きっかけ
             startScanner();
-            // 音声許可のためのダミー音
-            playBeep();
         });
 
-        document.getElementById('payment-btn').addEventListener('click', () => {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    document.getElementById('scanner').style.display = 'none';
-                    document.getElementById('payment-btn').style.display = 'none';
-                    document.getElementById('reset-btn').style.display = 'block';
-                    document.getElementById('payment-display').textContent = `合計 ${total}円`;
-                    document.getElementById('payment-display').style.display = 'block';
-                }).catch((err) => {
-                    console.error("スキャン停止エラー:", err);
-                });
-            }
+        document.getElementById('payment-btn').addEventListener('click', async () => {
+            await stopScanner();
+            document.getElementById('scanner').style.display = 'none';
+            document.getElementById('payment-btn').style.display = 'none';
+            document.getElementById('reset-btn').style.display = 'block';
+            document.getElementById('payment-display').textContent = `合計 ${total}円`;
+            document.getElementById('payment-display').style.display = 'block';
+            document.getElementById('message').textContent = '';
         });
 
         document.getElementById('reset-btn').addEventListener('click', () => {
